@@ -1,0 +1,14 @@
+package com.pnpe.backend.model.enums;
+
+public enum RoleName {
+    ROLE_DG,
+    ROLE_SUPER_ADMIN,
+    ROLE_ADMIN_CENTRAL,
+    ROLE_RESPONSABLE_AGENCE,
+    ROLE_CONSEILLER,
+    ROLE_ACCUEIL,
+    ROLE_POLE_SCAN,
+    ROLE_GESTIONNAIRE,
+    ROLE_OPERATEUR,
+    ROLE_CONSULTATION
+}

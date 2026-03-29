@@ -1,0 +1,17 @@
+package com.pnpe.backend.model.enums;
+
+public enum JobSeekerStatus {
+    PRE_REGISTERED,
+    PENDING_VALIDATION,
+    ACTIVE,
+    ACTION_PLAN_DEFINED,
+    IN_PROCESS,
+    TRAINING_ORIENTED,
+    TRAINING_IN_PROGRESS,
+    INSERTED_PENDING_CONFIRMATION,
+    INSERTED_CONFIRMED,
+    INACTIVE,
+    SUSPENDED,
+    CLOSED,
+    RADIATED
+}
