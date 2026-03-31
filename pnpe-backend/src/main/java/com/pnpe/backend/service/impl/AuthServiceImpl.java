@@ -36,7 +36,7 @@ public class AuthServiceImpl implements AuthService {
     public AuthResponse login(AuthRequest request) {
         String normalizedEmail = request.email().trim().toLowerCase();
 
-        User user = userRepository.findWithRoleByEmail(normalizedEmail)
+        User user = userRepository.findWithRoleByEmailIgnoreCase(normalizedEmail)
                 .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable"));
 
         if (user.getPassword() == null || !passwordEncoder.matches(request.password(), user.getPassword())) {

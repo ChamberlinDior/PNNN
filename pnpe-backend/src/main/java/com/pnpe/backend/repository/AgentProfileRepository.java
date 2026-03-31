@@ -17,4 +17,6 @@ public interface AgentProfileRepository extends JpaRepository<AgentProfile, Long
 
     @EntityGraph(attributePaths = {"user", "user.role", "user.agency"})
     List<AgentProfile> findAll();
+
+    boolean existsByAgentCodeIgnoreCase(String agentCode);
 }
