@@ -11,12 +11,15 @@ public interface PreRegistrationService {
 
     List<PreRegistrationResponse> findAll();
 
-    // étape accueil / scan
-    PreRegistrationResponse markReadyForCounselor(Long preRegistrationId, Long counselorId);
+    // étape scan finale : attribution + transmission + génération carte PNPE
+    PreRegistrationResponse markReadyForCounselor(Long preRegistrationId, Long counselorId, Long scannerUserId);
 
-    // étape conseiller : prise en charge / mise en relation
+    // étape conseiller : prise en charge réelle
     PreRegistrationResponse confirmCounselorConnection(Long preRegistrationId, Long counselorId);
 
     // étape finale conseiller : conversion
     PreRegistrationResponse validateAndConvert(Long preRegistrationId, Long counselorId);
+
+    // option conservée : validation documentaire simple
+    PreRegistrationResponse validateDocumentsByScanner(Long preRegistrationId, Long scannerUserId);
 }

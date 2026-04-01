@@ -31,8 +31,9 @@ public class PreRegistrationController {
 
     @PostMapping("/{id}/ready-for-counselor")
     public PreRegistrationResponse markReadyForCounselor(@PathVariable Long id,
-                                                         @RequestParam Long counselorId) {
-        return preRegistrationService.markReadyForCounselor(id, counselorId);
+                                                         @RequestParam Long counselorId,
+                                                         @RequestParam Long scannerUserId) {
+        return preRegistrationService.markReadyForCounselor(id, counselorId, scannerUserId);
     }
 
     @PostMapping("/{id}/confirm-counselor-connection")
@@ -45,5 +46,11 @@ public class PreRegistrationController {
     public PreRegistrationResponse validate(@PathVariable Long id,
                                             @RequestParam Long counselorId) {
         return preRegistrationService.validateAndConvert(id, counselorId);
+    }
+
+    @PostMapping("/{id}/validate-documents")
+    public PreRegistrationResponse validateDocumentsByScanner(@PathVariable Long id,
+                                                              @RequestParam Long scannerUserId) {
+        return preRegistrationService.validateDocumentsByScanner(id, scannerUserId);
     }
 }

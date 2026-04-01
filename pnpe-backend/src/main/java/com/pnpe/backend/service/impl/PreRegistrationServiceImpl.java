@@ -1,18 +1,24 @@
 package com.pnpe.backend.service.impl;
 
 import com.pnpe.backend.dto.JobSeekerRequest;
+import com.pnpe.backend.dto.PnpeCardResponse;
 import com.pnpe.backend.dto.PreRegistrationRequest;
 import com.pnpe.backend.dto.PreRegistrationResponse;
 import com.pnpe.backend.exception.ResourceNotFoundException;
 import com.pnpe.backend.model.Agency;
 import com.pnpe.backend.model.AgentProfile;
+import com.pnpe.backend.model.JobSeekerDocument;
 import com.pnpe.backend.model.PreRegistration;
 import com.pnpe.backend.model.User;
 import com.pnpe.backend.model.enums.PreRegistrationStatus;
+import com.pnpe.backend.model.enums.RoleName;
 import com.pnpe.backend.repository.AgencyRepository;
 import com.pnpe.backend.repository.AgentProfileRepository;
+import com.pnpe.backend.repository.JobSeekerDocumentRepository;
 import com.pnpe.backend.repository.PreRegistrationRepository;
+import com.pnpe.backend.repository.UserRepository;
 import com.pnpe.backend.service.JobSeekerService;
+import com.pnpe.backend.service.PnpeCardService;
 import com.pnpe.backend.service.PreRegistrationService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -32,16 +38,25 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
     private final AgencyRepository agencyRepository;
     private final AgentProfileRepository agentProfileRepository;
     private final JobSeekerService jobSeekerService;
+    private final UserRepository userRepository;
+    private final JobSeekerDocumentRepository documentRepository;
+    private final PnpeCardService pnpeCardService;
 
     public PreRegistrationServiceImpl(PreRegistrationRepository preRegistrationRepository,
                                       AgencyRepository agencyRepository,
                                       AgentProfileRepository agentProfileRepository,
                                       SequenceGenerator sequenceGenerator,
-                                      JobSeekerService jobSeekerService) {
+                                      JobSeekerService jobSeekerService,
+                                      UserRepository userRepository,
+                                      JobSeekerDocumentRepository documentRepository,
+                                      PnpeCardService pnpeCardService) {
         this.preRegistrationRepository = preRegistrationRepository;
         this.agencyRepository = agencyRepository;
         this.agentProfileRepository = agentProfileRepository;
         this.jobSeekerService = jobSeekerService;
+        this.userRepository = userRepository;
+        this.documentRepository = documentRepository;
+        this.pnpeCardService = pnpeCardService;
     }
 
     @Override
@@ -77,12 +92,66 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
 
     @Override
     @Transactional
-    public PreRegistrationResponse markReadyForCounselor(Long preRegistrationId, Long counselorId) {
+    public PreRegistrationResponse validateDocumentsByScanner(Long preRegistrationId, Long scannerUserId) {
+        PreRegistration preRegistration = preRegistrationRepository.findById(preRegistrationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pré-inscription introuvable"));
+
+        User scanner = userRepository.findDetailedById(scannerUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur scanner introuvable"));
+
+        if (scanner.getRole() == null || scanner.getRole().getName() != RoleName.ROLE_POLE_SCAN) {
+            throw new IllegalStateException("Seul un utilisateur du pôle scan peut valider la vérification des pièces.");
+        }
+
+        List<JobSeekerDocument> documents = documentRepository.findByPreRegistrationIdOrderByCreatedAtDesc(preRegistrationId);
+        if (documents.isEmpty()) {
+            throw new IllegalStateException("Aucune pièce n'a été chargée pour cette pré-inscription.");
+        }
+
+        for (JobSeekerDocument document : documents) {
+            document.setVerified(true);
+        }
+        documentRepository.saveAll(documents);
+
+        preRegistration.setDocumentsVerifiedByScan(true);
+        preRegistration.setDocumentsVerifiedAt(LocalDateTime.now());
+        preRegistration.setDocumentsVerifiedBy(scanner);
+        preRegistration.setHasRequiredDocuments(true);
+
+        PreRegistration saved = preRegistrationRepository.save(preRegistration);
+        return toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public PreRegistrationResponse markReadyForCounselor(Long preRegistrationId, Long counselorId, Long scannerUserId) {
         PreRegistration preRegistration = preRegistrationRepository.findById(preRegistrationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pré-inscription introuvable"));
 
         AgentProfile counselor = agentProfileRepository.findById(counselorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Conseiller introuvable"));
+
+        User scanner = userRepository.findDetailedById(scannerUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur scanner introuvable"));
+
+        if (scanner.getRole() == null || scanner.getRole().getName() != RoleName.ROLE_POLE_SCAN) {
+            throw new IllegalStateException("Seul un utilisateur du pôle scan peut attribuer et transmettre un dossier.");
+        }
+
+        List<JobSeekerDocument> documents = documentRepository.findByPreRegistrationIdOrderByCreatedAtDesc(preRegistrationId);
+        if (documents.isEmpty()) {
+            throw new IllegalStateException("Aucune pièce n'a été chargée pour cette pré-inscription.");
+        }
+
+        for (JobSeekerDocument document : documents) {
+            document.setVerified(true);
+        }
+        documentRepository.saveAll(documents);
+
+        preRegistration.setDocumentsVerifiedByScan(true);
+        preRegistration.setDocumentsVerifiedAt(LocalDateTime.now());
+        preRegistration.setDocumentsVerifiedBy(scanner);
+        preRegistration.setHasRequiredDocuments(true);
 
         preRegistration.setReferredCounselor(counselor);
         preRegistration.setStatus(PreRegistrationStatus.READY_FOR_COUNSELOR);
@@ -93,7 +162,14 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
         }
 
         PreRegistration saved = preRegistrationRepository.save(preRegistration);
-        return toResponse(saved);
+
+        // La carte est générée ici, au moment de "Attribuer / transmettre"
+        pnpeCardService.createForPreRegistration(saved.getId(), scannerUserId);
+
+        PreRegistration refreshed = preRegistrationRepository.findById(saved.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Pré-inscription introuvable après transmission scan"));
+
+        return toResponse(refreshed);
     }
 
     @Override
@@ -195,6 +271,7 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
         preRegistration.setProjectSummary(request.projectSummary());
         preRegistration.setWelcomeNotes(request.welcomeNotes());
         preRegistration.setSubmittedAt(LocalDateTime.now());
+        preRegistration.setDocumentsVerifiedByScan(false);
 
         if (Boolean.TRUE.equals(request.hasRequiredDocuments())) {
             preRegistration.setStatus(PreRegistrationStatus.DOCUMENTS_PENDING);
@@ -287,6 +364,14 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
             }
         }
 
+        String documentsVerifiedByName = null;
+        if (preRegistration.getDocumentsVerifiedBy() != null
+                && preRegistration.getDocumentsVerifiedBy().getFullName() != null) {
+            documentsVerifiedByName = preRegistration.getDocumentsVerifiedBy().getFullName().trim();
+        }
+
+        PnpeCardResponse pnpeCard = pnpeCardService.findByPreRegistrationIdOrNull(preRegistration.getId());
+
         return new PreRegistrationResponse(
                 preRegistration.getId(),
                 preRegistration.getRequestNumber(),
@@ -299,7 +384,11 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
                 preRegistration.getStatus(),
                 agencyName,
                 counselorName,
-                preRegistration.getSubmittedAt()
+                preRegistration.getSubmittedAt(),
+                preRegistration.getDocumentsVerifiedByScan(),
+                preRegistration.getDocumentsVerifiedAt(),
+                documentsVerifiedByName,
+                pnpeCard
         );
     }
 }

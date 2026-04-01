@@ -38,6 +38,13 @@ public class PreRegistration extends BaseEntity {
     private LocalDateTime submittedAt;
     private LocalDateTime counselorAppointmentAt;
 
+    private Boolean documentsVerifiedByScan = false;
+    private LocalDateTime documentsVerifiedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "documents_verified_by_user_id")
+    private User documentsVerifiedBy;
+
     @Enumerated(EnumType.STRING)
     private RegistrationChannel registrationChannel = RegistrationChannel.AGENCY;
 

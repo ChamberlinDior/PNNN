@@ -17,5 +17,9 @@ public record PreRegistrationResponse(
         PreRegistrationStatus status,
         String agencyName,
         String counselorName,
-        LocalDateTime submittedAt
+        LocalDateTime submittedAt,
+        Boolean documentsVerifiedByScan,
+        LocalDateTime documentsVerifiedAt,
+        String documentsVerifiedByName,
+        PnpeCardResponse pnpeCard
 ) {}
