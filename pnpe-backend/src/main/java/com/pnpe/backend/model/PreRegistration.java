@@ -35,7 +35,19 @@ public class PreRegistration extends BaseEntity {
     private String projectSummary;
     private String welcomeNotes;
     private String missingDocuments;
+
     private LocalDateTime submittedAt;
+
+    /**
+     * Rendez-vous d'accueil choisi par le demandeur.
+     * Exemple : 2026-04-08T08:30
+     */
+    private LocalDateTime appointmentAt;
+
+    /**
+     * Ancien champ conservé pour compatibilité avec l’existant.
+     * Peut continuer à être utilisé côté intranet si besoin.
+     */
     private LocalDateTime counselorAppointmentAt;
 
     private Boolean documentsVerifiedByScan = false;

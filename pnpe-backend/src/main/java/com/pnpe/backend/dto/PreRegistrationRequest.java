@@ -4,6 +4,7 @@ import com.pnpe.backend.model.enums.RegistrationChannel;
 import jakarta.validation.constraints.NotBlank;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 public record PreRegistrationRequest(
         @NotBlank String firstName,
@@ -20,5 +21,11 @@ public record PreRegistrationRequest(
         String welcomeNotes,
         Long agencyId,
         Long referredCounselorId,
-        RegistrationChannel registrationChannel
+        RegistrationChannel registrationChannel,
+
+        /**
+         * Rendez-vous demandé par le demandeur.
+         * Exemple : 2026-04-08T08:30
+         */
+        LocalDateTime appointmentAt
 ) {}

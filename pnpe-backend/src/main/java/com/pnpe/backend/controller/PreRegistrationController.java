@@ -6,6 +6,8 @@ import com.pnpe.backend.service.PreRegistrationService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -22,6 +24,11 @@ public class PreRegistrationController {
     @GetMapping
     public List<PreRegistrationResponse> findAll() {
         return preRegistrationService.findAll();
+    }
+
+    @GetMapping("/available-slots")
+    public List<LocalDateTime> getAvailableSlots(@RequestParam LocalDate date) {
+        return preRegistrationService.getAvailableAppointmentSlots(date);
     }
 
     @PostMapping

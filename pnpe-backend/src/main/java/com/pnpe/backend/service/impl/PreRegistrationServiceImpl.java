@@ -24,7 +24,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -33,6 +36,16 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
     private static final String REQUEST_PREFIX = "PR-";
     private static final long REQUEST_START = 1001L;
     private static final int MAX_GENERATION_ATTEMPTS = 10;
+
+    /**
+     * Créneaux de rendez-vous :
+     * - début : 08:00
+     * - fin de génération : 16:30
+     * - pas : 10 minutes
+     */
+    private static final LocalTime APPOINTMENT_START_TIME = LocalTime.of(8, 0);
+    private static final LocalTime APPOINTMENT_END_TIME = LocalTime.of(16, 30);
+    private static final int APPOINTMENT_SLOT_MINUTES = 10;
 
     private final PreRegistrationRepository preRegistrationRepository;
     private final AgencyRepository agencyRepository;
@@ -45,7 +58,6 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
     public PreRegistrationServiceImpl(PreRegistrationRepository preRegistrationRepository,
                                       AgencyRepository agencyRepository,
                                       AgentProfileRepository agentProfileRepository,
-                                      SequenceGenerator sequenceGenerator,
                                       JobSeekerService jobSeekerService,
                                       UserRepository userRepository,
                                       JobSeekerDocumentRepository documentRepository,
@@ -62,6 +74,8 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
     @Override
     @Transactional
     public PreRegistrationResponse create(PreRegistrationRequest request) {
+        validateAppointmentAt(request.appointmentAt());
+
         for (int attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
             PreRegistration preRegistration = buildPreRegistration(request);
             preRegistration.setRequestNumber(generateNextRequestNumber());
@@ -88,6 +102,38 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LocalDateTime> getAvailableAppointmentSlots(LocalDate date) {
+        if (date == null) {
+            throw new IllegalArgumentException("La date du rendez-vous est obligatoire.");
+        }
+
+        LocalDateTime dayStart = date.atStartOfDay();
+        LocalDateTime dayEnd = date.atTime(LocalTime.MAX);
+
+        List<PreRegistration> existingAppointments =
+                preRegistrationRepository.findByAppointmentAtBetweenOrderByAppointmentAtAsc(dayStart, dayEnd);
+
+        List<LocalDateTime> takenSlots = existingAppointments.stream()
+                .map(PreRegistration::getAppointmentAt)
+                .filter(slot -> slot != null)
+                .toList();
+
+        List<LocalDateTime> availableSlots = new ArrayList<>();
+        LocalDateTime currentSlot = date.atTime(APPOINTMENT_START_TIME);
+        LocalDateTime lastSlot = date.atTime(APPOINTMENT_END_TIME);
+
+        while (!currentSlot.isAfter(lastSlot)) {
+            if (!takenSlots.contains(currentSlot)) {
+                availableSlots.add(currentSlot);
+            }
+            currentSlot = currentSlot.plusMinutes(APPOINTMENT_SLOT_MINUTES);
+        }
+
+        return availableSlots;
     }
 
     @Override
@@ -163,7 +209,6 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
 
         PreRegistration saved = preRegistrationRepository.save(preRegistration);
 
-        // La carte est générée ici, au moment de "Attribuer / transmettre"
         pnpeCardService.createForPreRegistration(saved.getId(), scannerUserId);
 
         PreRegistration refreshed = preRegistrationRepository.findById(saved.getId())
@@ -272,6 +317,7 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
         preRegistration.setWelcomeNotes(request.welcomeNotes());
         preRegistration.setSubmittedAt(LocalDateTime.now());
         preRegistration.setDocumentsVerifiedByScan(false);
+        preRegistration.setAppointmentAt(request.appointmentAt());
 
         if (Boolean.TRUE.equals(request.hasRequiredDocuments())) {
             preRegistration.setStatus(PreRegistrationStatus.DOCUMENTS_PENDING);
@@ -303,6 +349,32 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
         }
 
         return preRegistration;
+    }
+
+    private void validateAppointmentAt(LocalDateTime appointmentAt) {
+        if (appointmentAt == null) {
+            throw new IllegalArgumentException("La date du rendez-vous est obligatoire.");
+        }
+
+        LocalTime appointmentTime = appointmentAt.toLocalTime();
+
+        if (appointmentTime.isBefore(APPOINTMENT_START_TIME) || appointmentTime.isAfter(APPOINTMENT_END_TIME)) {
+            throw new IllegalArgumentException("L'heure du rendez-vous doit être comprise entre 08:00 et 16:30.");
+        }
+
+        if (appointmentTime.getSecond() != 0 || appointmentTime.getNano() != 0) {
+            throw new IllegalArgumentException("Le créneau du rendez-vous doit être précis à la minute.");
+        }
+
+        int minute = appointmentTime.getMinute();
+        if (minute % APPOINTMENT_SLOT_MINUTES != 0) {
+            throw new IllegalArgumentException("Les rendez-vous doivent respecter des créneaux de 10 minutes.");
+        }
+
+        boolean slotAlreadyTaken = preRegistrationRepository.existsByAppointmentAt(appointmentAt);
+        if (slotAlreadyTaken) {
+            throw new IllegalStateException("Ce créneau est déjà réservé. Veuillez en choisir un autre.");
+        }
     }
 
     private Agency extractAgencyFromAgent(AgentProfile agentProfile) {
@@ -385,6 +457,7 @@ public class PreRegistrationServiceImpl implements PreRegistrationService {
                 agencyName,
                 counselorName,
                 preRegistration.getSubmittedAt(),
+                preRegistration.getAppointmentAt(),
                 preRegistration.getDocumentsVerifiedByScan(),
                 preRegistration.getDocumentsVerifiedAt(),
                 documentsVerifiedByName,

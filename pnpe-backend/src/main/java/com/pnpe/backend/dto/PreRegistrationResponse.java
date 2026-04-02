@@ -18,6 +18,12 @@ public record PreRegistrationResponse(
         String agencyName,
         String counselorName,
         LocalDateTime submittedAt,
+
+        /**
+         * Rendez-vous réellement enregistré.
+         */
+        LocalDateTime appointmentAt,
+
         Boolean documentsVerifiedByScan,
         LocalDateTime documentsVerifiedAt,
         String documentsVerifiedByName,
