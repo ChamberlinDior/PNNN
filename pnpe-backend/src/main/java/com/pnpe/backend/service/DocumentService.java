@@ -14,4 +14,5 @@ public interface DocumentService {
     DocumentResponse uploadForJobSeeker(Long jobSeekerId, MultipartFile file, DocumentType documentType, DocumentSide side, String label, String documentNumber);
     List<DocumentResponse> list(DocumentOwnerType ownerType, Long ownerId);
     Resource loadAsResource(Long documentId);
+    DocumentResponse getMetadata(Long documentId);
 }

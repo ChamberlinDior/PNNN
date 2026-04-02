@@ -97,7 +97,7 @@ public class DocumentServiceImpl implements DocumentService {
         JobSeekerDocument saved = documentRepository.save(document);
 
         if (documentType == DocumentType.CV) {
-            jobSeeker.setMainCvUrl("/api/documents/" + saved.getId() + "/download");
+            jobSeeker.setMainCvUrl("/api/documents/" + saved.getId() + "/preview");
             jobSeeker.setLastCvUpdateAt(LocalDateTime.now());
             jobSeekerRepository.save(jobSeeker);
         }
@@ -129,7 +129,23 @@ public class DocumentServiceImpl implements DocumentService {
         return fileStorageService.load(document.getStoragePath());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public DocumentResponse getMetadata(Long documentId) {
+        JobSeekerDocument document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document introuvable"));
+        return toResponse(document);
+    }
+
     private DocumentResponse toResponse(JobSeekerDocument document) {
+        String mimeType = fileStorageService.detectMimeType(
+                document.getStoragePath(),
+                document.getOriginalFilename(),
+                document.getMimeType()
+        );
+        String extension = fileStorageService.getExtension(document.getOriginalFilename());
+        boolean previewable = fileStorageService.isPreviewable(mimeType, document.getOriginalFilename());
+
         return new DocumentResponse(
                 document.getId(),
                 document.getOwnerType(),
@@ -139,6 +155,11 @@ public class DocumentServiceImpl implements DocumentService {
                 document.getLabel(),
                 document.getDocumentNumber(),
                 document.getVerified(),
+                mimeType,
+                extension,
+                document.getSizeInBytes(),
+                previewable,
+                "/api/documents/" + document.getId() + "/preview",
                 "/api/documents/" + document.getId() + "/download"
         );
     }

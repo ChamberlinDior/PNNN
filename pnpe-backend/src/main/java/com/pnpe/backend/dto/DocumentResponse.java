@@ -13,5 +13,10 @@ public record DocumentResponse(
         String label,
         String documentNumber,
         Boolean verified,
+        String mimeType,
+        String extension,
+        Long sizeInBytes,
+        Boolean previewable,
+        String previewUrl,
         String downloadUrl
 ) {}

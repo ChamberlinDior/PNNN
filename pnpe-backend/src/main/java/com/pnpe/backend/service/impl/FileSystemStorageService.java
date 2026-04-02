@@ -46,4 +46,69 @@ public class FileSystemStorageService {
     public Resource load(String storagePath) {
         return new FileSystemResource(storagePath);
     }
+
+    public String getExtension(String filename) {
+        if (filename == null || filename.isBlank() || !filename.contains(".")) {
+            return "";
+        }
+        return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+    }
+
+    public String detectMimeType(String storagePath, String originalFilename, String fallbackMimeType) {
+        try {
+            Path path = Paths.get(storagePath);
+            String detected = Files.probeContentType(path);
+            if (detected != null && !detected.isBlank()) {
+                return detected;
+            }
+        } catch (IOException ignored) {
+        }
+
+        String extension = getExtension(originalFilename);
+
+        return switch (extension) {
+            case "pdf" -> "application/pdf";
+            case "png" -> "image/png";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "gif" -> "image/gif";
+            case "webp" -> "image/webp";
+            case "svg" -> "image/svg+xml";
+            case "bmp" -> "image/bmp";
+            case "txt" -> "text/plain";
+            case "json" -> "application/json";
+            case "xml" -> "application/xml";
+            case "html", "htm" -> "text/html";
+            case "mp4" -> "video/mp4";
+            case "mov" -> "video/quicktime";
+            case "webm" -> "video/webm";
+            case "doc" -> "application/msword";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "xls" -> "application/vnd.ms-excel";
+            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case "ppt" -> "application/vnd.ms-powerpoint";
+            case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "csv" -> "text/csv";
+            default -> (fallbackMimeType != null && !fallbackMimeType.isBlank())
+                    ? fallbackMimeType
+                    : "application/octet-stream";
+        };
+    }
+
+    public boolean isPreviewable(String mimeType, String filename) {
+        String mime = mimeType == null ? "" : mimeType.toLowerCase();
+        String extension = getExtension(filename);
+
+        if (mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("text/")) {
+            return true;
+        }
+
+        if ("application/pdf".equals(mime)) {
+            return true;
+        }
+
+        return switch (extension) {
+            case "pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "mp4", "mov", "webm", "txt", "json", "xml", "html", "htm" -> true;
+            default -> false;
+        };
+    }
 }
