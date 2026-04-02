@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -54,7 +56,7 @@ public class DocumentServiceImpl implements DocumentService {
         JobSeekerDocument document = new JobSeekerDocument();
         document.setOwnerType(DocumentOwnerType.PRE_REGISTRATION);
         document.setDocumentType(documentType);
-        document.setDocumentSide(side);
+        document.setDocumentSide(side != null ? side : DocumentSide.NOT_APPLICABLE);
         document.setOriginalFilename(file.getOriginalFilename());
         document.setStoragePath(storagePath);
         document.setMimeType(file.getContentType());
@@ -84,7 +86,7 @@ public class DocumentServiceImpl implements DocumentService {
         JobSeekerDocument document = new JobSeekerDocument();
         document.setOwnerType(DocumentOwnerType.JOB_SEEKER);
         document.setDocumentType(documentType);
-        document.setDocumentSide(side);
+        document.setDocumentSide(side != null ? side : DocumentSide.NOT_APPLICABLE);
         document.setOriginalFilename(file.getOriginalFilename());
         document.setStoragePath(storagePath);
         document.setMimeType(file.getContentType());
@@ -108,17 +110,23 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     @Transactional(readOnly = true)
     public List<DocumentResponse> list(DocumentOwnerType ownerType, Long ownerId) {
-        return switch (ownerType) {
-            case PRE_REGISTRATION -> documentRepository.findByPreRegistrationIdOrderByCreatedAtDesc(ownerId)
-                    .stream()
-                    .map(this::toResponse)
-                    .toList();
-            case JOB_SEEKER -> documentRepository.findByJobSeekerIdOrderByCreatedAtDesc(ownerId)
-                    .stream()
-                    .map(this::toResponse)
-                    .toList();
-            default -> List.of();
-        };
+        if (ownerType == null) {
+            throw new IllegalArgumentException("ownerType est obligatoire");
+        }
+
+        if (ownerId == null) {
+            throw new IllegalArgumentException("ownerId est obligatoire");
+        }
+
+        if (ownerType == DocumentOwnerType.PRE_REGISTRATION) {
+            return listPreRegistrationDocuments(ownerId);
+        }
+
+        if (ownerType == DocumentOwnerType.JOB_SEEKER) {
+            return listJobSeekerDocumentsIncludingPreRegistration(ownerId);
+        }
+
+        throw new IllegalArgumentException("Type de propriétaire non supporté : " + ownerType);
     }
 
     @Override
@@ -126,6 +134,7 @@ public class DocumentServiceImpl implements DocumentService {
     public Resource loadAsResource(Long documentId) {
         JobSeekerDocument document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document introuvable"));
+
         return fileStorageService.load(document.getStoragePath());
     }
 
@@ -134,17 +143,57 @@ public class DocumentServiceImpl implements DocumentService {
     public DocumentResponse getMetadata(Long documentId) {
         JobSeekerDocument document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document introuvable"));
+
         return toResponse(document);
     }
 
+    private List<DocumentResponse> listPreRegistrationDocuments(Long preRegistrationId) {
+        return documentRepository.findByPreRegistrationIdOrderByCreatedAtDesc(preRegistrationId)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    private List<DocumentResponse> listJobSeekerDocumentsIncludingPreRegistration(Long jobSeekerId) {
+        JobSeeker jobSeeker = jobSeekerRepository.findById(jobSeekerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Demandeur introuvable"));
+
+        List<JobSeekerDocument> merged = new ArrayList<>();
+
+        List<JobSeekerDocument> jobSeekerDocuments =
+                documentRepository.findByJobSeekerIdOrderByCreatedAtDesc(jobSeekerId);
+        merged.addAll(jobSeekerDocuments);
+
+        if (jobSeeker.getPreRegistration() != null && jobSeeker.getPreRegistration().getId() != null) {
+            Long preRegistrationId = jobSeeker.getPreRegistration().getId();
+
+            List<JobSeekerDocument> preRegistrationDocuments =
+                    documentRepository.findByPreRegistrationIdOrderByCreatedAtDesc(preRegistrationId);
+
+            merged.addAll(preRegistrationDocuments);
+        }
+
+        merged.sort(
+                Comparator.comparing(JobSeekerDocument::getCreatedAt,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(JobSeekerDocument::getId,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+        );
+
+        return merged.stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     private DocumentResponse toResponse(JobSeekerDocument document) {
-        String mimeType = fileStorageService.detectMimeType(
+        String effectiveMimeType = fileStorageService.detectMimeType(
                 document.getStoragePath(),
                 document.getOriginalFilename(),
                 document.getMimeType()
         );
+
         String extension = fileStorageService.getExtension(document.getOriginalFilename());
-        boolean previewable = fileStorageService.isPreviewable(mimeType, document.getOriginalFilename());
+        boolean previewable = fileStorageService.isPreviewable(effectiveMimeType, document.getOriginalFilename());
 
         return new DocumentResponse(
                 document.getId(),
@@ -154,8 +203,8 @@ public class DocumentServiceImpl implements DocumentService {
                 document.getOriginalFilename(),
                 document.getLabel(),
                 document.getDocumentNumber(),
-                document.getVerified(),
-                mimeType,
+                Boolean.TRUE.equals(document.getVerified()),
+                effectiveMimeType,
                 extension,
                 document.getSizeInBytes(),
                 previewable,
